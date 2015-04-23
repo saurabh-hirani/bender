@@ -1,24 +1,34 @@
 require 'thread'
 
+require 'robut'
+require 'robut/storage/yaml_store'
+
+Bot = Robut # alias
 
 
-module Bender
-  class Bot
-    @@singleton = nil
 
-    def self.run!
-      @@singleton ||= Bot.new
-    end
+module Bot
+  def self.run!
+    Bot::Plugin.plugins = [ Bot::Plugin::Bender ]
+    Bot::Web.set :connection, Bot::Connection.new.connect
+  end
+end
 
 
-    def initialize
-      Thread.new do
-        loop do
-          puts 'Running Bot...'
-          sleep 5
+module Bot
+  module Plugin
+    class Bender
+      include Bot::Plugin
+
+
+      def handle time, sender, message
+        if message =~ /bender/
+          reply 'What, %s?! (%s)' % [ sender, time ]
         end
-      end
-    end
 
+        return true
+      end
+
+    end
   end
 end
