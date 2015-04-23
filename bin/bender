@@ -1,0 +1,3 @@
+#!/usr/bin/env ruby
+require 'bender'
+Bender::Main.start ARGV
