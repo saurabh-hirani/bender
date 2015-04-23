@@ -3,7 +3,7 @@ $:.push File.expand_path(File.join('..', 'lib'), __FILE__)
 require 'bender/metadata'
 
 Gem::Specification.new do |s|
-  s.name        = 'bender'
+  s.name        = 'bender-bot'
   s.version     = Bender::VERSION
   s.platform    = Gem::Platform::RUBY
   s.author      = Bender::AUTHOR
