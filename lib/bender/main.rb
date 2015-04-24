@@ -96,8 +96,41 @@ module Bender
       aliases: %w[ -J ],
       desc: 'Set JIRA project',
       required: true
+    option :refresh, \
+      type: :numeric,
+      aliases: %w[ -R ],
+      desc: 'Set JIRA refresh rate',
+      default: 300
     include_common_options
     def start
+      bot = start_bot
+      refresh_users bot
+      serve_web bot
+    end
+
+
+
+  private
+
+    def start_bot
+      Bot::Connection.configure do |config|
+        config.jid = options.jid
+        config.password = options.password
+        config.nick = options.mention
+        config.mention_name = options.nick
+        config.rooms = options.rooms.split(',')
+
+        Bot::Storage::YamlStore.file = options.database
+        config.store = Bot::Storage::YamlStore
+
+        config.logger = log
+      end
+
+      Bot.run!
+    end
+
+
+    def refresh_users bot
       req_path = '/rest/api/2/user/assignable/search'
       req_params = QueryParams.encode \
         project: options.jira_project,
@@ -118,35 +151,21 @@ module Bender
 
           users = JSON.parse(resp.body).inject({}) do |h, user|
             h[user['key']] = {
-              nick: user['name'],
+              nick: user['key'],
               name: user['displayName'],
               email: user['emailAddress']
             } ; h
           end
 
-          Bot.set :users, users
+          bot.store['users'] = users
 
-          sleep 300
+          sleep options.refresh
         end
       end
+    end
 
 
-      Bot::Connection.configure do |config|
-        config.jid = options.jid
-        config.password = options.password
-        config.nick = options.mention
-        config.mention_name = options.nick
-        config.rooms = options.rooms.split(',')
-
-        Bot::Storage::YamlStore.file = options.database
-        config.store = Bot::Storage::YamlStore
-
-        config.logger = log
-      end
-
-      Bot.run!
-
-
+    def serve_web bot
       Web.set :environment, options.environment
       Web.set :port, options.port
       Web.set :bind, options.bind
@@ -159,6 +178,7 @@ module Bender
         Web.set :logging, ::Logger::DEBUG
       end
 
+      Web.set :bot, bot
       Web.run!
     end
 
