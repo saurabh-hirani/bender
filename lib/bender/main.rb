@@ -1,6 +1,7 @@
 require 'logger'
 
 require 'tilt/erb'
+require 'queryparams'
 
 require_relative 'metadata'
 require_relative 'mjolnir'
@@ -70,8 +71,66 @@ module Bender
       aliases: %w[ -d ],
       desc: 'Set path to application database',
       required: true
+    option :rooms, \
+      type: :string,
+      aliases: %w[ -r ],
+      desc: 'Set HipChat rooms (comma-separated)',
+      required: true
+    option :jira_user, \
+      type: :string,
+      aliases: %w[ -U ],
+      desc: 'Set JIRA username',
+      required: true
+    option :jira_pass, \
+      type: :string,
+      aliases: %w[ -P ],
+      desc: 'Set JIRA password',
+      required: true
+    option :jira_site, \
+      type: :string,
+      aliases: %w[ -S ],
+      desc: 'Set JIRA site',
+      required: true
+    option :jira_project, \
+      type: :string,
+      aliases: %w[ -J ],
+      desc: 'Set JIRA project',
+      required: true
     include_common_options
     def start
+      req_path = '/rest/api/2/user/assignable/search'
+      req_params = QueryParams.encode \
+        project: options.jira_project,
+        startAt: 0,
+        maxResults: 1_000_000
+
+      uri = URI(options.jira_site + req_path + '?' + req_params)
+      http = Net::HTTP.new uri.hostname, uri.port
+
+      req = Net::HTTP::Get.new uri
+      req.basic_auth options.jira_user, options.jira_pass
+      req['Content-Type'] = 'application/json'
+      req['Accept'] = 'application/json'
+
+      Thread.new do
+        loop do
+          resp = http.request req
+
+          users = JSON.parse(resp.body).inject({}) do |h, user|
+            h[user['key']] = {
+              nick: user['name'],
+              name: user['displayName'],
+              email: user['emailAddress']
+            } ; h
+          end
+
+          Bot.set :users, users
+
+          sleep 300
+        end
+      end
+
+
       Bot::Connection.configure do |config|
         config.jid = options.jid
         config.password = options.password

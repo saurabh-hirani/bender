@@ -3,6 +3,7 @@ source 'https://rubygems.org'
 gemspec
 
 group :development do
+  gem 'fpm'
   gem 'rake'
   gem 'yard'
   gem 'version'
