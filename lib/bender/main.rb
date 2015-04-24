@@ -96,6 +96,11 @@ module Bender
       aliases: %w[ -J ],
       desc: 'Set JIRA project',
       required: true
+    option :jira_type, \
+      type: :string,
+      aliases: %w[ -T ],
+      desc: 'Set JIRA issue type',
+      required: true
     option :refresh, \
       type: :numeric,
       aliases: %w[ -R ],
@@ -126,7 +131,7 @@ module Bender
         config.logger = log
       end
 
-      Bot.run!
+      Bot.run! options
     end
 
 
