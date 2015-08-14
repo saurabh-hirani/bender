@@ -78,8 +78,26 @@ class BenderBot
       reply is
 
     when /^\s*\/inc\s+summary\s*$/
-      # TODO
-      reply "Sorry, I haven't been programmed for that yet!"
+      refresh_incidents
+
+      severity_field = SHOW_FIELDS.key 'Severity'
+      severities = Hash.new { |h,k| h[k] = [] }
+
+      store['incidents'].each do |i|
+        if recent_incident? i
+          repr = '%s-%s: %s' % [
+            options.jira_project, i['num'], i['fields']['summary']
+          ]
+          sev  = i['fields'][severity_field]['value']
+          severities[sev] << repr
+        end
+      end
+
+      is = severities.keys.sort.map do |sev|
+        "%s:\n%s" % [ sev, severities[sev].join("\n") ]
+      end.join("\n\n")
+
+      reply is
 
     when /^\s*\/inc\s+(\d+)\s*$/
       refresh_incidents
@@ -213,8 +231,20 @@ private
     end
   end
 
+
   def normalize_date val
     Time.parse(val).utc.iso8601(3).sub(/Z$/, 'UTC')
+  end
+
+
+  def recent_incident? i
+    it = Time.parse(i['fields']['created'])
+    Time.now - it < one_day
+  end
+
+
+  def one_day
+    24 * 60 * 60 # seconds/day
   end
 
 end
