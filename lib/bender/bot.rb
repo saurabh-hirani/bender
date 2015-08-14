@@ -28,6 +28,14 @@ class BenderBot
 
   JARO = FuzzyStringMatch::JaroWinkler.create :native
 
+  SEVERITIES = {
+    1 => '10480',
+    2 => '10481',
+    3 => '10482',
+    4 => '10483',
+    5 => '10484'
+  }
+
   SHOW_FIELDS = {
     'summary' => 'Summary',
     'description' => 'Description',
@@ -72,8 +80,11 @@ class BenderBot
       refresh_incidents
 
       is = store['incidents'].map do |i|
-        '%s: %s' % [ i['num'], i['fields']['summary'] ]
-      end.join("\n")
+        status = normalize_value i['fields']['status']
+        unless status =~ /done|complete|closed/i
+          '%s: %s' % [ i['num'], i['fields']['summary'] ]
+        end
+      end.compact.join("\n")
 
       reply is
 
@@ -124,21 +135,17 @@ class BenderBot
       # TODO
       reply "Sorry, I haven't been programmed for that yet!"
 
-    when /^\s*\/inc\s+(\d+)\s+(.*?)\s*$/
-      refresh_incidents
-      incident = store['incidents'].select { |i| i['num'] == $1 }.first
-      val = incident['fields'][$2]
-      val = val.is_a?(Hash) ? val['name'] : val
-      reply val
-
-    when /^\s*\/inc\s+(.*?)\s*$/
+    when /^\s*\/inc\s+(sev|s|p)?(\d+)\s+(.*?)\s*$/i
       user = user_where name: sender
       data = {
         fields: {
           project: { key: options.jira_project },
           issuetype: { name: options.jira_type },
           reporter: { name: user[:nick] },
-          summary: $1
+          summary: $3,
+          SHOW_FIELDS.key('Severity') => {
+            id: SEVERITIES[$2.to_i]
+          }
         }
       }
 
@@ -211,7 +218,7 @@ private
     req['Accept'] = 'application/json'
     req.body = data.to_json
 
-    resp = http.request req
+    resp  = http.request req
     issue = JSON.parse(resp.body)
 
     return options.jira_site + '/browse/' + issue['key']
