@@ -24,6 +24,8 @@ Gem::Specification.new do |s|
   # Bundled libs
   s.add_runtime_dependency 'eventmachine', '= %s' % Bender::EM_VERSION
   s.add_runtime_dependency 'thin', '= %s' % Bender::THIN_VERSION
+  s.add_runtime_dependency 'json', '= %s' % Bender::JSON_VERSION
+  s.add_runtime_dependency 'ffi', '= %s' % Bender::FFI_VERSION
 
   s.files         = Dir['{bin,lib,web}/**/*'] + %w[ LICENSE Readme.md VERSION ]
   s.test_files    = Dir['test/**/*']

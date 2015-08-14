@@ -47,12 +47,14 @@ include Bender
 TAR = $?.exitstatus.zero? ? 'gtar' : 'tar'
 
 desc 'Package Bender for Docker, Linux and OS X'
-task native_packages: %w[ docker package:osx ]
+task native_packages: %w[ docker package:linux package:osx ]
 
 
 namespace :package do
   task linux: [
     'pkg/traveling-ruby-linux-x86_64',
+    'pkg/traveling-ruby-gem-ffi-linux-x86_64',
+    'pkg/traveling-ruby-gem-json-linux-x86_64',
     'pkg/traveling-ruby-gem-thin-linux-x86_64',
     'pkg/traveling-ruby-gem-eventmachine-linux-x86_64'
   ] do
@@ -61,6 +63,8 @@ namespace :package do
 
   task osx: [
     'pkg/traveling-ruby-osx',
+    'pkg/traveling-ruby-gem-ffi-osx',
+    'pkg/traveling-ruby-gem-json-osx',
     'pkg/traveling-ruby-gem-thin-osx',
     'pkg/traveling-ruby-gem-eventmachine-osx'
   ] do
@@ -88,6 +92,25 @@ file 'pkg/traveling-ruby-osx' do
   download_runtime TRAVELING_RUBY_VERSION, 'osx'
 end
 
+
+file 'pkg/traveling-ruby-gem-json-linux-x86_64' do
+  download_extension 'json', JSON_VERSION, 'linux-x86_64'
+end
+
+file 'pkg/traveling-ruby-gem-json-osx' do
+  download_extension 'json', JSON_VERSION, 'osx'
+end
+
+
+file 'pkg/traveling-ruby-gem-ffi-linux-x86_64' do
+  download_extension 'ffi', FFI_VERSION, 'linux-x86_64'
+end
+
+file 'pkg/traveling-ruby-gem-ffi-osx' do
+  download_extension 'ffi', FFI_VERSION, 'osx'
+end
+
+
 file 'pkg/traveling-ruby-gem-thin-linux-x86_64' do
   download_extension 'thin', THIN_VERSION, 'linux-x86_64'
 end
@@ -95,6 +118,7 @@ end
 file 'pkg/traveling-ruby-gem-thin-osx' do
   download_extension 'thin', THIN_VERSION, 'osx'
 end
+
 
 file 'pkg/traveling-ruby-gem-eventmachine-linux-x86_64' do
   download_extension 'eventmachine', EM_VERSION, 'linux-x86_64'

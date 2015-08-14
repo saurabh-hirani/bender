@@ -1,4 +1,6 @@
 require 'thread'
+require 'date'
+require 'time'
 
 require 'robut'
 require 'robut/storage/yaml_store'
@@ -26,14 +28,19 @@ class BenderBot
 
   JARO = FuzzyStringMatch::JaroWinkler.create :native
 
-  SHOW_FIELDS = %w[
-    summary
-    description
-    priority
-    status
-    created
-    updated
-  ]
+  SHOW_FIELDS = {
+    'summary' => 'Summary',
+    'description' => 'Description',
+    'customfield_11250' => 'Severity',
+    'customfield_11251' => 'Impact Started',
+    'customfield_11252' => 'Impact Ended',
+    'customfield_11253' => 'Reported By',
+    'customfield_11254' => 'Services Affected',
+    'customfield_11255' => 'Cause',
+    'status' => 'Status',
+    'created' => 'Created',
+    'updated' => 'Updated'
+  }
 
 
   def handle time, sender, message
@@ -51,16 +58,17 @@ class BenderBot
       u = user_where(name: $1) || user_where(nick: $1)
       reply '%s: %s (%s)' % [ u[:nick], u[:name], u[:email] ]
 
-    when /^\s*\?incident\s*$/
+    when /^\s*\?inc\s*$/
       reply [
-        '?icident - This help text',
-        '?incidents - List open incidents',
-        '?incident NUM - Show incident',
-        '?incident NUM FIELD - Show incident field',
-        '?incident SUMMARY - File a new incident'
+        '?inc - This help text',
+        '/inc - List open incidents',
+        '/inc NUM - Show incident details',
+        '/inc close NUM - Close an indident',
+        '/inc SEVERITY SUMMARY - File a new incident',
+        '/inc summary - Summarize recent indicents'
       ].join("\n")
 
-    when /^\s*\?incidents\s*$/
+    when /^\s*\/inc\s*$/
       refresh_incidents
 
       is = store['incidents'].map do |i|
@@ -69,17 +77,22 @@ class BenderBot
 
       reply is
 
-    when /^\s*\?incident\s+(\d+)\s*$/
+    when /^\s*\/inc\s+summary\s*$/
+      # TODO
+      reply "Sorry, I haven't been programmed for that yet!"
+
+    when /^\s*\/inc\s+(\d+)\s*$/
       refresh_incidents
       incident = store['incidents'].select { |i| i['num'] == $1 }.first
 
-      fields = SHOW_FIELDS - %w[ summary ]
+      fields = SHOW_FIELDS.keys - %w[ summary ]
 
       i = fields.map do |f|
         val = incident['fields'][f]
         if val
-          val = val.is_a?(Hash) ? val['name'] : val
-          '%s: %s' % [ f, val ]
+          key = SHOW_FIELDS[f]
+          val = normalize_value val
+          '%s: %s' % [ key, val ]
         end
       end.compact
 
@@ -89,14 +102,18 @@ class BenderBot
         i.join("\n")
       ]
 
-    when /^\s*\?incident\s+(\d+)\s+(.*?)\s*$/
+    when /^\s*\/inc\s+close\s+(\d+)\s*$/
+      # TODO
+      reply "Sorry, I haven't been programmed for that yet!"
+
+    when /^\s*\/inc\s+(\d+)\s+(.*?)\s*$/
       refresh_incidents
       incident = store['incidents'].select { |i| i['num'] == $1 }.first
       val = incident['fields'][$2]
       val = val.is_a?(Hash) ? val['name'] : val
       reply val
 
-    when /^\s*\?incident\s+(.*?)\s*$/
+    when /^\s*\/inc\s+(.*?)\s*$/
       user = user_where name: sender
       data = {
         fields: {
@@ -144,7 +161,7 @@ private
     req_path = '/rest/api/2/search'
     req_params = QueryParams.encode \
       jql: "project = #{options.jira_project} AND resolution = Unresolved ORDER BY created ASC, priority DESC",
-      fields: SHOW_FIELDS.join(','),
+      fields: SHOW_FIELDS.keys.join(','),
       startAt: 0,
       maxResults: 1_000_000
 
@@ -182,5 +199,22 @@ private
     return options.jira_site + '/browse/' + issue['key']
   end
 
+
+  def normalize_value val
+    case val
+    when Hash
+      val['name'] || val['value'] || val
+    when Array
+      val.map { |v| v['value'] }.join(', ')
+    when /^\d{4}\-\d{2}\-\d{2}/
+      '%s (%s)' % [ val, normalize_date(val) ]
+    else
+      val
+    end
+  end
+
+  def normalize_date val
+    Time.parse(val).utc.iso8601(3).sub(/Z$/, 'UTC')
+  end
 
 end
