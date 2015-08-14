@@ -28,6 +28,8 @@ class BenderBot
 
   JARO = FuzzyStringMatch::JaroWinkler.create :native
 
+  CLOSE_TRANSITIONS = %w[ 21 41 ]
+
   SEVERITIES = {
     1 => '10480',
     2 => '10481',
@@ -71,9 +73,9 @@ class BenderBot
         '?inc - This help text',
         '/inc - List open incidents',
         '/inc NUM - Show incident details',
-        '/inc close NUM - Close an indident',
+        '/inc close NUM - Close an incident',
         '/inc SEVERITY SUMMARY - File a new incident',
-        '/inc summary - Summarize recent indicents'
+        '/inc summary - Summarize recent incidents'
       ].join("\n")
 
     when /^\s*\/inc\s*$/
@@ -125,15 +127,18 @@ class BenderBot
         end
       end.compact
 
-      reply "%s: %s\n%s" % [
+      reply "%s\n%s: %s\n%s" % [
+        (options.jira_site + '/browse/' + incident['key']),
         incident['key'],
         incident['fields']['summary'],
         i.join("\n")
       ]
 
     when /^\s*\/inc\s+close\s+(\d+)\s*$/
-      # TODO
-      reply "Sorry, I haven't been programmed for that yet!"
+      refresh_incidents
+      incident = store['incidents'].select { |i| i['num'] == $1 }.first
+
+      reply close_incident(incident)
 
     when /^\s*\/inc\s+(sev|s|p)?(\d+)\s+(.*?)\s*$/i
       user = user_where name: sender
@@ -185,7 +190,7 @@ private
   def refresh_incidents
     req_path = '/rest/api/2/search'
     req_params = QueryParams.encode \
-      jql: "project = #{options.jira_project} AND resolution = Unresolved ORDER BY created ASC, priority DESC",
+      jql: "project = #{options.jira_project} ORDER BY created ASC, priority DESC",
       fields: SHOW_FIELDS.keys.join(','),
       startAt: 0,
       maxResults: 1_000_000
@@ -222,6 +227,44 @@ private
     issue = JSON.parse(resp.body)
 
     return options.jira_site + '/browse/' + issue['key']
+  end
+
+
+  def close_incident incident
+    req_path = '/rest/api/2/issue/%s/transitions?expand=transitions.fields' % [
+      incident['key']
+    ]
+    uri = URI(options.jira_site + req_path)
+    http = Net::HTTP.new uri.hostname, uri.port
+
+    req = Net::HTTP::Post.new uri
+    req.basic_auth options.jira_user, options.jira_pass
+    req['Content-Type'] = 'application/json'
+    req['Accept'] = 'application/json'
+
+    closed = false
+    CLOSE_TRANSITIONS.each do |tid|
+      req.body = {
+        transition: { id: tid }
+      }.to_json
+      resp = http.request req
+      case resp
+      when Net::HTTPBadRequest
+        next
+      else
+        closed = true
+        break
+      end
+    end
+
+    if closed
+      'Closed: ' + options.jira_site + '/browse/' + incident['key']
+    else
+      [
+        "Failed to close, make sure you've got the ticket filled out",
+        (options.jira_site + '/browse/' + incident['key'])
+      ].join("\n")
+    end
   end
 
 
