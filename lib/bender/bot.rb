@@ -87,7 +87,9 @@ class BenderBot
           '%s: %s' % [ i['num'], i['fields']['summary'] ]
         end
       end.compact.join("\n")
-
+      if is.empty?
+        is = "No open incident at the moment"
+      end
       reply is
 
     when /^\s*\/inc\s+summary\s*$/

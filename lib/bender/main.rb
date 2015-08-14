@@ -153,7 +153,6 @@ module Bender
       Thread.new do
         loop do
           resp = http.request req
-
           users = JSON.parse(resp.body).inject({}) do |h, user|
             h[user['key']] = {
               nick: user['key'],
