@@ -91,10 +91,12 @@ class BenderBot
       is = store['incidents'].reverse.map do |i|
         status = normalize_value i['fields']['status']
         unless status =~ /done|complete|closed/i
-          '%s-%s (%s): %s' % [
+          '%s-%s (%s - %s) [%s]: %s' % [
             options.jira_project,
             i['num'],
             short_severity(i['fields'][severity_field]['value']),
+            normalize_value(i['fields']['status']),
+            friendly_date(i['fields']['created']),
             i['fields']['summary']
           ]
         end
@@ -108,21 +110,50 @@ class BenderBot
     when /^\s*\/inc\s+summary\s*$/
       refresh_incidents
 
+      statuses = Hash.new { |h,k| h[k] = 0 }
+
       store['incidents'].reverse.each do |i|
         if recent_incident? i
-          repr = '%s-%s: %s' % [
-            options.jira_project, i['num'], i['fields']['summary']
+          status = normalize_value(i['fields']['status'])
+
+          repr = '%s-%s (%s) [%s]: %s' % [
+            options.jira_project,
+            i['num'],
+            status,
+            friendly_date(i['fields']['created']),
+            i['fields']['summary']
           ]
+
           sev  = i['fields'][severity_field]['value']
           severities[sev] << repr
+          statuses[status] += 1
         end
       end
 
-      is = severities.keys.sort.map do |sev|
-        "%s:\n%s" % [ sev, severities[sev].join("\n") ]
-      end.join("\n\n")
+      summary = []
+      summary << 'By Status:'
+      statuses.each do |status, size|
+        summary << '%s: %d ticket(s)' % [ status, size ]
+      end
+      summary << ''
+      summary << 'By Severity:'
+      severities.keys.sort.each do |severity|
+        summary << '%s: %d ticket(s)' % [
+          short_severity(severity),
+          severities[severity].size
+        ]
+      end
 
-      reply is
+      if severities.empty?
+        reply 'No recent incidents! Woohoo!'
+
+      else
+        is = severities.keys.sort.map do |sev|
+          "%s:\n%s" % [ sev, severities[sev].join("\n") ]
+        end.join("\n\n")
+
+        reply(summary.join("\n") + "\n\n" + is)
+      end
 
 
     # /inc NUM - Show incident details
@@ -303,7 +334,12 @@ private
 
 
   def normalize_date val
-    Time.parse(val).utc.iso8601(3).sub(/Z$/, 'UTC')
+    Time.parse(val).utc.iso8601(0).sub(/Z$/, 'UTC')
+  end
+
+
+  def friendly_date val
+    Time.parse(val).strftime('%Y-%m-%d %H:%M %Z')
   end
 
 
