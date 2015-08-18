@@ -81,7 +81,8 @@ class BenderBot
         '/inc [INCIDENT_NUMBER] - Display incident details',
         '/inc close [INCIDENT_NUMBER] - Close an incident',
         '/inc open [SEVERITY=1,2,3,4,5] [SUMMARY_TEXT] - Open a new incident',
-        '/inc summary - Summarize incidents from past 24 hours (open or closed)'
+        '/inc summary - Summarize incidents from past 24 hours (open or closed)',
+        '/inc comment [INCIDENT_NUMBER] [COMMENT_TEXT] - Add a comment to an incident'
       ].join("\n")
 
     # /inc - List open incidents
@@ -207,6 +208,15 @@ class BenderBot
       }
 
       reply file_incident(data)
+
+
+    # /inc comment [INCIDENT_NUMBER] [COMMENT_TEXT]
+    when /^\s*\/inc\s+comment\s+(\d+)\s+(.*?)\s*$/i
+      incident = select_incident $1
+      comment  = $2
+      user     = user_where name: sender
+
+      reply comment_on_incident(incident, comment, user)
     end
 
     return true
@@ -313,6 +323,29 @@ private
     else
       [
         'Failed to close automatically, you might try yourself',
+        (options.jira_site + '/browse/' + incident['key'])
+      ].join("\n")
+    end
+  end
+
+
+  def comment_on_incident incident, comment, user
+    req_path = '/rest/api/2/issue/%s/comment' % incident['key']
+    uri = URI(options.jira_site + req_path)
+    http = Net::HTTP.new uri.hostname, uri.port
+
+    req = Net::HTTP::Post.new uri
+    req.basic_auth options.jira_user, options.jira_pass
+    req['Content-Type'] = 'application/json'
+    req['Accept'] = 'application/json'
+    req.body = { body: '_[~%s]_ says: %s' % [ user[:nick], comment ] }.to_json
+
+    case http.request(req)
+    when Net::HTTPCreated
+      'Added: ' + options.jira_site + '/browse/' + incident['key']
+    else
+      [
+        'Sorry, I had trouble adding your comment',
         (options.jira_site + '/browse/' + incident['key'])
       ].join("\n")
     end
