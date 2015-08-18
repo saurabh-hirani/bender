@@ -30,6 +30,8 @@ class BenderBot
 
   CLOSE_TRANSITIONS = %w[ 21 41 ]
 
+  CLOSE_STATE = /done/i
+
   SEVERITIES = {
     1 => '10480',
     2 => '10481',
@@ -54,6 +56,9 @@ class BenderBot
 
 
   def handle time, sender, message
+    severity_field = SHOW_FIELDS.key 'Severity'
+    severities = Hash.new { |h,k| h[k] = [] }
+
     case message
 
 
@@ -68,37 +73,42 @@ class BenderBot
       u = user_where(name: $1) || user_where(nick: $1)
       reply '%s: %s (%s)' % [ u[:nick], u[:name], u[:email] ]
 
+    # ?inc - This help text
     when /^\s*\?inc\s*$/
       reply [
-        '?inc - This help text',
+        '?inc - Display this help text',
         '/inc - List open incidents',
-        '/inc NUM - Show incident details',
-        '/inc close NUM - Close an incident',
-        '/inc SEVERITY SUMMARY - File a new incident',
-        '/inc summary - Summarize recent incidents'
+        '/inc [INCIDENT_NUMBER] - Display incident details',
+        '/inc close [INCIDENT_NUMBER] - Close an incident',
+        '/inc open [SEVERITY=1,2,3,4,5] [SUMMARY_TEXT] - Open a new incident',
+        '/inc summary - Summarize incidents from past 24 hours (open or closed)'
       ].join("\n")
 
+    # /inc - List open incidents
     when /^\s*\/inc\s*$/
       refresh_incidents
 
-      is = store['incidents'].map do |i|
+      is = store['incidents'].reverse.map do |i|
         status = normalize_value i['fields']['status']
         unless status =~ /done|complete|closed/i
-          '%s: %s' % [ i['num'], i['fields']['summary'] ]
+          '%s-%s (%s): %s' % [
+            options.jira_project,
+            i['num'],
+            short_severity(i['fields'][severity_field]['value']),
+            i['fields']['summary']
+          ]
         end
       end.compact.join("\n")
-      if is.empty?
-        is = "No open incident at the moment"
-      end
+
+      is = 'No open incidents at the moment!' if is.empty?
+
       reply is
 
+    # /inc summary - Summarize recent incidents
     when /^\s*\/inc\s+summary\s*$/
       refresh_incidents
 
-      severity_field = SHOW_FIELDS.key 'Severity'
-      severities = Hash.new { |h,k| h[k] = [] }
-
-      store['incidents'].each do |i|
+      store['incidents'].reverse.each do |i|
         if recent_incident? i
           repr = '%s-%s: %s' % [
             options.jira_project, i['num'], i['fields']['summary']
@@ -114,35 +124,44 @@ class BenderBot
 
       reply is
 
+
+    # /inc NUM - Show incident details
     when /^\s*\/inc\s+(\d+)\s*$/
-      refresh_incidents
-      incident = store['incidents'].select { |i| i['num'] == $1 }.first
+      incident = select_incident $1
 
-      fields = SHOW_FIELDS.keys - %w[ summary ]
+      if incident.nil?
+        reply 'Sorry, no such incident!'
+      else
+        fields = SHOW_FIELDS.keys - %w[ summary ]
 
-      i = fields.map do |f|
-        val = incident['fields'][f]
-        if val
-          key = SHOW_FIELDS[f]
-          val = normalize_value val
-          '%s: %s' % [ key, val ]
-        end
-      end.compact
+        i = fields.map do |f|
+          val = incident['fields'][f]
+          if val
+            key = SHOW_FIELDS[f]
+            val = normalize_value val
+            '%s: %s' % [ key, val ]
+          end
+        end.compact
 
-      reply "%s\n%s: %s\n%s" % [
-        (options.jira_site + '/browse/' + incident['key']),
-        incident['key'],
-        incident['fields']['summary'],
-        i.join("\n")
-      ]
+        reply "%s\n%s: %s\n%s" % [
+          (options.jira_site + '/browse/' + incident['key']),
+          incident['key'],
+          incident['fields']['summary'],
+          i.join("\n")
+        ]
+      end
 
+    # /inc close NUM - Close an incident
     when /^\s*\/inc\s+close\s+(\d+)\s*$/
-      refresh_incidents
-      incident = store['incidents'].select { |i| i['num'] == $1 }.first
+      incident = select_incident $1
+      if incident
+        reply close_incident(incident)
+      else
+        reply 'Sorry, no such incident!'
+      end
 
-      reply close_incident(incident)
-
-    when /^\s*\/inc\s+(sev|s|p)?(\d+)\s+(.*?)\s*$/i
+    # /inc open SEVERITY SUMMARY - File a new incident
+    when /^\s*\/inc\s+open\s+(severity|sev|s|p)?(\d+)\s+(.*?)\s*$/i
       user = user_where name: sender
       data = {
         fields: {
@@ -228,7 +247,11 @@ private
     resp  = http.request req
     issue = JSON.parse(resp.body)
 
-    return options.jira_site + '/browse/' + issue['key']
+    if issue.has_key? 'key'
+      options.jira_site + '/browse/' + issue['key']
+    else
+      "Sorry, I couldn't file that!"
+    end
   end
 
 
@@ -244,26 +267,21 @@ private
     req['Content-Type'] = 'application/json'
     req['Accept'] = 'application/json'
 
-    closed = false
     CLOSE_TRANSITIONS.each do |tid|
       req.body = {
         transition: { id: tid }
       }.to_json
-      resp = http.request req
-      case resp
-      when Net::HTTPBadRequest
-        next
-      else
-        closed = true
-        break
-      end
+      http.request req
     end
 
-    if closed
+    incident = select_incident incident['key'].split('-',2).last
+    status = normalize_value incident['fields']['status']
+
+    if status =~ CLOSE_STATE
       'Closed: ' + options.jira_site + '/browse/' + incident['key']
     else
       [
-        "Failed to close, make sure you've got the ticket filled out",
+        'Failed to close automatically, you might try yourself',
         (options.jira_site + '/browse/' + incident['key'])
       ].join("\n")
     end
@@ -297,6 +315,17 @@ private
 
   def one_day
     24 * 60 * 60 # seconds/day
+  end
+
+
+  def select_incident num, refresh=true
+    refresh_incidents if refresh
+    store['incidents'].select { |i| i['num'] == num }.first
+  end
+
+
+  def short_severity s
+    s.split(' - ', 2).first
   end
 
 end
