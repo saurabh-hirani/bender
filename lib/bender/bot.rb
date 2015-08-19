@@ -134,12 +134,12 @@ class BenderBot
       summary = []
       summary << 'By Status:'
       statuses.each do |status, size|
-        summary << '%s: %d ticket(s)' % [ status, size ]
+        summary << '%s: %d incident(s)' % [ status, size ]
       end
       summary << ''
       summary << 'By Severity:'
       severities.keys.sort.each do |severity|
-        summary << '%s: %d ticket(s)' % [
+        summary << '%s: %d incident(s)' % [
           short_severity(severity),
           severities[severity].size
         ]
