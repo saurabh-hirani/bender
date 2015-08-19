@@ -1,4 +1,5 @@
 require 'logger'
+require 'net/http'
 
 require 'tilt/erb'
 require 'queryparams'
