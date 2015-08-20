@@ -3,6 +3,7 @@ require 'date'
 require 'time'
 
 require 'robut'
+require 'hipchat'
 require 'robut/storage/yaml_store'
 require 'fuzzystringmatch'
 require 'queryparams'
@@ -13,6 +14,9 @@ Bot = Robut # alias
 
 module Bot
   def self.run! options
+    hipchat = HipChat::Client.new(options.hipchat_token)
+    BenderBot.class_variable_set :@@hipchat, hipchat
+    BenderBot.class_variable_set :@@rooms, hipchat.rooms
     BenderBot.class_variable_set :@@options, options
     Bot::Plugin.plugins = [ BenderBot ]
     conn = Bot::Connection.new
@@ -55,35 +59,65 @@ class BenderBot
   }
 
 
-  def handle time, sender, message
+  QUOTES = [
+    'Bite my shiny metal ass!',
+    'This is the worst kind of discrimination there is: the kind against me!',
+    'I guess if you want children beaten, you have to do it yourself.',
+    "Hahahahaha! Oh wait you're serious. Let me laugh even harder.",
+    "You know what cheers me up? Other people's misfortune.",
+    'Anything less than immortality is a complete waste of time.',
+    "Blackmail is such an ugly word. I prefer extortion. The 'x' makes it sound cool.",
+    'Have you tried turning off the TV, sitting down with your children, and hitting them?',
+    "You're a pimple on society’s ass and you'll never amount to anything!",
+    'Shut up baby, I know it!',
+    "I'm so embarrassed. I wish everyone else was dead!",
+    "Afterlife? If I thought I had to live another life, I'd kill myself right now!",
+    "I'm back baby!",
+    "LET'S GO ALREADYYYYYY!"
+  ]
+
+
+  def reply_html message, color=:yellow
+    @@hipchat[@room_name].send(nick, message, color: color)
+  end
+
+
+  def handle room, sender, message
+    @room_name = @@rooms.select { |r| r.xmpp_jid == room }.first.name
+    @room      = room
+    @sender    = sender
+    @message   = message
+
     severity_field = SHOW_FIELDS.key 'Severity'
     severities = Hash.new { |h,k| h[k] = [] }
 
+
     case message
 
+    when /^\s*\/bender\s*$/
+      reply_html QUOTES.sample(1).first, :red
 
-    when /^\s*\?opts\s*$/
-      reply options.inspect
-
-    when /^\s*\?whoami\s*$/
+    when /^\s*\/whoami\s*$/
       u = user_where name: sender
-      reply '%s: %s (%s)' % [ u[:nick], u[:name], u[:email] ]
+      m = '<b>%{nick}</b>: %{name} (<a href="mailto:%{email}">%{email}</a>)' % u
+      reply_html m, :purple
 
-    when /^\s*\?lookup\s+(.+)\s*$/
+    when /^\s*\/lookup\s+(.+)\s*$/
       u = user_where(name: $1) || user_where(nick: $1)
-      reply '%s: %s (%s)' % [ u[:nick], u[:name], u[:email] ]
+      m = '<b>%{nick}</b>: %{name} (<a href="mailto:%{email}">%{email}</a>)' % u
+      reply_html m, :purple
 
     # ?inc - This help text
     when /^\s*\?inc\s*$/
-      reply [
-        '?inc - Display this help text',
-        '/inc - List open incidents',
-        '/inc [INCIDENT_NUMBER] - Display incident details',
-        '/inc close [INCIDENT_NUMBER] - Close an incident',
-        '/inc open [SEVERITY=1,2,3,4,5] [SUMMARY_TEXT] - Open a new incident',
-        '/inc summary - Summarize incidents from past 24 hours (open or closed)',
-        '/inc comment [INCIDENT_NUMBER] [COMMENT_TEXT] - Add a comment to an incident'
-      ].join("\n")
+      reply_html [
+        '<code>?inc</code> - Display this help text',
+        '<code>/inc</code> - List open incidents',
+        '<code>/inc <i>INCIDENT_NUMBER</i></code> - Display incident details',
+        '<code>/inc close <i>INCIDENT_NUMBER</i></code> - Close an incident',
+        '<code>/inc open <i>SEVERITY=1,2,3,4,5</i> <i>SUMMARY_TEXT</i></code> - Open a new incident',
+        '<code>/inc summary</code> - Summarize incidents from past 24 hours (open or closed)',
+        '<code>/inc comment <i>INCIDENT_NUMBER</i> <i>COMMENT_TEXT</i></code> - Add a comment to an incident'
+      ].join('<br />')
 
     # /inc - List open incidents
     when /^\s*\/inc\s*$/
@@ -92,20 +126,21 @@ class BenderBot
       is = store['incidents'].reverse.map do |i|
         status = normalize_value i['fields']['status']
         unless status =~ /done|complete|closed/i
-          '%s-%s (%s - %s) [%s]: %s' % [
-            options.jira_project,
-            i['num'],
+          '%s (%s - %s) [%s]: %s' % [
+            incident_link(i),
             short_severity(i['fields'][severity_field]['value']),
             normalize_value(i['fields']['status']),
             friendly_date(i['fields']['created']),
             i['fields']['summary']
           ]
         end
-      end.compact.join("\n")
+      end.compact.join('<br />')
 
-      is = 'No open incidents at the moment!' if is.empty?
-
-      reply is
+      if is.empty?
+        reply_html 'No open incidents at the moment!', :green
+      else
+        reply_html is
+      end
 
     # /inc summary - Summarize recent incidents
     when /^\s*\/inc\s+summary\s*$/
@@ -117,9 +152,8 @@ class BenderBot
         if recent_incident? i
           status = normalize_value(i['fields']['status'])
 
-          repr = '%s-%s (%s) [%s]: %s' % [
-            options.jira_project,
-            i['num'],
+          repr = '%s (%s) [%s]: %s' % [
+            incident_link(i),
             status,
             friendly_date(i['fields']['created']),
             i['fields']['summary']
@@ -146,14 +180,14 @@ class BenderBot
       end
 
       if severities.empty?
-        reply 'No recent incidents! Woohoo!'
+        reply_html 'No recent incidents! Woohoo!', :green
 
       else
         is = severities.keys.sort.map do |sev|
-          "%s:\n%s" % [ sev, severities[sev].join("\n") ]
-        end.join("\n\n")
+          "%s:<br />%s" % [ sev, severities[sev].join("<br />") ]
+        end.join("<br /><br />")
 
-        reply(summary.join("\n") + "\n\n" + is)
+        reply_html(summary.join("<br />") + "<br /><br />" + is)
       end
 
 
@@ -162,7 +196,7 @@ class BenderBot
       incident = select_incident $1
 
       if incident.nil?
-        reply 'Sorry, no such incident!'
+        reply_html 'Sorry, no such incident!', :red
       else
         fields = SHOW_FIELDS.keys - %w[ summary ]
 
@@ -175,11 +209,10 @@ class BenderBot
           end
         end.compact
 
-        reply "%s\n%s: %s\n%s" % [
-          (options.jira_site + '/browse/' + incident['key']),
-          incident['key'],
+        reply_html "%s - %s<br />%s" % [
+          incident_link(incident),
           incident['fields']['summary'],
-          i.join("\n")
+          i.join("<br />")
         ]
       end
 
@@ -187,9 +220,9 @@ class BenderBot
     when /^\s*\/inc\s+close\s+(\d+)\s*$/
       incident = select_incident $1
       if incident
-        reply close_incident(incident)
+        reply_html close_incident(incident), :green
       else
-        reply 'Sorry, no such incident!'
+        reply_html 'Sorry, no such incident!', :red
       end
 
     # /inc open SEVERITY SUMMARY - File a new incident
@@ -207,7 +240,7 @@ class BenderBot
         }
       }
 
-      reply file_incident(data)
+      reply_html *file_incident(data)
 
 
     # /inc comment [INCIDENT_NUMBER] [COMMENT_TEXT]
@@ -216,7 +249,11 @@ class BenderBot
       comment  = $2
       user     = user_where name: sender
 
-      reply comment_on_incident(incident, comment, user)
+      if incident
+        reply_html *comment_on_incident(incident, comment, user)
+      else
+        reply_html 'Sorry, no such incident!', :red
+      end
     end
 
     return true
@@ -289,9 +326,9 @@ private
     issue = JSON.parse(resp.body)
 
     if issue.has_key? 'key'
-      options.jira_site + '/browse/' + issue['key']
+      [ 'Filed ' + incident_link(issue), :green ]
     else
-      "Sorry, I couldn't file that!"
+      [ "Sorry, I couldn't file that!", :red ]
     end
   end
 
@@ -319,12 +356,12 @@ private
     status = normalize_value incident['fields']['status']
 
     if status =~ CLOSE_STATE
-      'Closed: ' + options.jira_site + '/browse/' + incident['key']
+      'Closed ' + incident_link(incident)
     else
       [
         'Failed to close automatically, you might try yourself',
         (options.jira_site + '/browse/' + incident['key'])
-      ].join("\n")
+      ].join("<br />")
     end
   end
 
@@ -342,12 +379,12 @@ private
 
     case http.request(req)
     when Net::HTTPCreated
-      'Added: ' + options.jira_site + '/browse/' + incident['key']
+      [ 'Added comment to ' + incident_link(incident), :green ]
     else
       [
-        'Sorry, I had trouble adding your comment',
-        (options.jira_site + '/browse/' + incident['key'])
-      ].join("\n")
+        'Sorry, I had trouble adding your comment on' + incident_link(incident),
+        :red
+      ]
     end
   end
 
@@ -395,6 +432,19 @@ private
 
   def short_severity s
     s.split(' - ', 2).first
+  end
+
+
+  def incident_url incident
+    options.jira_site + '/browse/' + incident['key']
+  end
+
+  def incident_link incident
+    '<a href="%s">%s-%s</a>' % [
+      incident_url(incident),
+      options.jira_project,
+      incident['num']
+    ]
   end
 
 end

@@ -42,6 +42,11 @@ module Bender
       aliases: %w[ -e ],
       desc: 'Set Sinatra environment',
       default: 'development'
+    option :hipchat_token, \
+      type: :string,
+      aliases: %w[ -t ],
+      desc: 'Set HipChat v1 API token',
+      required: true
     option :jid, \
       type: :string,
       aliases: %w[ -j ],

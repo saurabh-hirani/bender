@@ -16,7 +16,7 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency 'thor', '~> 0'
   s.add_runtime_dependency 'slog', '~> 1'
   s.add_runtime_dependency 'sinatra', '~> 1.4'
-  s.add_runtime_dependency 'sclemmer-robut', '~> 0.5.2'
+  s.add_runtime_dependency 'sclemmer-robut', '~> 0.6.0'
   s.add_runtime_dependency 'hipchat', '~> 1'
   s.add_runtime_dependency 'queryparams', '~> 0.0.3'
   s.add_runtime_dependency 'fuzzy-string-match', '~> 0.9.7'
