@@ -32,9 +32,9 @@ class BenderBot
 
   JARO = FuzzyStringMatch::JaroWinkler.create :native
 
-  CLOSE_TRANSITIONS = %w[ 21 41 ]
+  CLOSED_TRANSITIONS = %w[ 61 71 ]
 
-  CLOSE_STATE = /done/i
+  CLOSED_STATE = /close/i
 
   SEVERITIES = {
     1 => '10480',
@@ -220,7 +220,7 @@ class BenderBot
     when /^\s*\/inc\s+close\s+(\d+)\s*$/
       incident = select_incident $1
       if incident
-        reply_html close_incident(incident), :green
+        reply_html *close_incident(incident)
       else
         reply_html 'Sorry, no such incident!', :red
       end
@@ -334,6 +334,14 @@ private
 
 
   def close_incident incident
+    status = normalize_value incident['fields']['status']
+    if status =~ CLOSED_STATE
+      return [
+        "#{incident_link(incident)} is already closed!",
+        :green
+      ]
+    end
+
     req_path = '/rest/api/2/issue/%s/transitions?expand=transitions.fields' % [
       incident['key']
     ]
@@ -345,7 +353,7 @@ private
     req['Content-Type'] = 'application/json'
     req['Accept'] = 'application/json'
 
-    CLOSE_TRANSITIONS.each do |tid|
+    CLOSED_TRANSITIONS.each do |tid|
       req.body = {
         transition: { id: tid }
       }.to_json
@@ -355,13 +363,13 @@ private
     incident = select_incident incident['key'].split('-',2).last
     status = normalize_value incident['fields']['status']
 
-    if status =~ CLOSE_STATE
-      'Closed ' + incident_link(incident)
+    if status =~ CLOSED_STATE
+      [ 'Closed ' + incident_link(incident), :green ]
     else
       [
-        'Failed to close automatically, you might try yourself',
-        (options.jira_site + '/browse/' + incident['key'])
-      ].join("<br />")
+        "Failed to close #{incident_link(incident)} automatically, you might try yourself",
+        :red
+      ]
     end
   end
 
