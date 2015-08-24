@@ -73,7 +73,9 @@ class BenderBot
     "I'm so embarrassed. I wish everyone else was dead!",
     "Afterlife? If I thought I had to live another life, I'd kill myself right now!",
     "I'm back baby!",
-    "LET'S GO ALREADYYYYYY!"
+    "LET'S GO ALREADYYYYYY!",
+    "I don't have emotions and sometimes that makes me very sad",
+    "Life is hilariously cruel"
   ]
 
 
