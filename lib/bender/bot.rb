@@ -137,7 +137,7 @@ class BenderBot
       end.compact.join('<br />')
 
       if is.empty?
-        reply_html 'No open incidents at the moment!', :green
+        reply_html 'Good news everyone - No open incidents at the moment!', :green
       else
         reply_html is
       end
